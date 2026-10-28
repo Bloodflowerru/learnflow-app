@@ -1,0 +1,381 @@
+Сделаю **`PROJECT_STATE.md`** — файл-«шпаргалка», по которому я (или любой другой ассистент) за 30 секунд поймёт, что за проект, что сделано, что осталось и как продолжить.
+
+Положите его в **корень `learnflow-react`** рядом с `package.json`.
+
+---
+
+## 📄 `PROJECT_STATE.md` — создать в корне проекта
+
+```markdown
+# LearnFlow — состояние проекта
+
+> **Назначение файла:** передача контекста между сессиями ассистента.
+> Если начинаем новый чат — прикрепите этот файл, и работа продолжится
+> с того же места без повторных объяснений.
+
+**Дата последнего обновления:** 28.10.2026
+**Стек:** React 18 + TypeScript + Vite + BlockNote 0.56 + Zustand + Express + JSON-файл БД
+**Где:** `C:\Users\RobotComp\Desktop\tests\learnflow-react` (фронт), `server.js` рядом (бэк)
+**Запуск:** `start.bat` (Vite) + отдельный батник для бэкенда (`node server.js`)
+
+---
+
+## 1. Что это за проект
+
+**LearnFlow** — корпоративная LMS-платформа (EdTech). Мультитенантность: несколько компаний, у каждой свои сотрудники, материалы, назначения и аналитика.
+
+**Роли:**
+- `superadmin` — управляет компаниями и всеми пользователями платформы
+- `admin` — управляет одной компанией: материалы, сотрудники, назначения, аналитика
+- `learner` — проходит назначенные материалы, видит прогресс
+
+**Демо-аккаунты (пароль `demo1234`):**
+| Email | Роль | Что видит |
+|---|---|---|
+| `super@demo.ru` | superadmin | `/superadmin` — все компании |
+| `admin@demo.ru` | admin | `/admin` — Demo Company |
+| `learner@demo.ru` | learner | `/learner` — кабинет ученика |
+
+**Код компании для регистрации:** `demo`
+
+---
+
+## 2. Архитектура
+
+### Фронтенд (`src/`)
+
+```
+src/
+├── pages/                  # Страницы (роуты)
+│   ├── Landing.tsx         # /
+│   ├── PublicPage.tsx      # /page/:page — заглушки (Возможности/Решения/Тарифы/Контакты)
+│   ├── Login.tsx           # /login
+│   ├── LearnerHome.tsx     # /learner — кабинет ученика
+│   ├── AdminHome.tsx       # /admin — админка компании
+│   ├── SuperAdmin.tsx      # /superadmin — супер-админка
+│   ├── Profile.tsx         # /profile
+│   ├── LongreadEditor.tsx  # /editor/:id — BlockNote-редактор
+│   ├── QuizEditor.tsx      # /quiz-editor/:id
+│   ├── CourseEditor.tsx    # /course-editor/:id
+│   ├── TrainerEditor.tsx   # /trainer-editor/:id
+│   ├── Read.tsx            # /read/:id — читалка лонгрида
+│   ├── QuizTake.tsx        # /quiz/:id — прохождение теста
+│   ├── CourseTake.tsx      # /course/:id — прохождение курса
+│   ├── TrainerTake.tsx     # /trainer/:id — прохождение тренажёра
+│   ├── ScormView.tsx       # /scorm/:id — SCORM iframe
+│   └── DevPanel.tsx        # /dev — dev-панель (только в DEV)
+│
+├── components/
+│   ├── AppHeader.tsx           # шапка с профилем/выходом
+│   ├── LandingHeader/Footer    # шапка/футер лендинга
+│   ├── PreviewBanner.tsx       # жёлтый баннер «Предпросмотр»
+│   ├── AdminDashboards.tsx     # 5 подвкладок дашборда + ActivityChart
+│   ├── CreateMaterialModal     # модалка создания
+│   ├── CreateUserModal         # создание пользователя
+│   ├── CreateCompanyModal      # создание компании
+│   ├── ImportUsersModal        # CSV-импорт пользователей
+│   ├── AssignMaterialModal     # назначение материала
+│   ├── AttemptsModal           # результаты теста
+│   └── ScormUpload             # загрузка SCORM ZIP
+│
+├── lib/
+│   ├── api.ts                  # базовые API-функции (getMaterials, login и т.д.)
+│   ├── api-learner.ts          # /api/learning/my, /api/my/progress, submitQuiz
+│   ├── api-admin.ts            # /api/companies, /api/users, bulk import
+│   ├── api-profile.ts          # профиль, аватар
+│   ├── api-scorm.ts            # SCORM state/track/finish
+│   ├── api-trainer.ts          # типы тренажёра
+│   ├── custom-blocks.tsx       # 6 кастомных блоков BlockNote
+│   ├── blocknote-adapter.ts    # legacy → BlockNote
+│   ├── file-to-data-url.ts     # сжатие картинок + base64
+│   ├── scorm-api.ts            # window.API (SCORM 1.2)
+│   └── icons.tsx               # SVG-иконки (IconHome, IconUsers и т.д.)
+│
+├── store/auth.ts               # Zustand: user, token, hydrate, setAuth, logout
+├── styles/                     # base, auth, app, editor, responsive
+└── App.tsx                     # роутинг + RequireAuth/RequireSuperAdmin
+```
+
+### Бэкенд (`server.js`)
+
+Express + JSON-файл `data.json` (никакой БД — всё в одном файле).
+
+**Структура `data.json`:**
+```json
+{
+  "companies":   [{ id, name, code, createdAt }],
+  "users":       [{ id, name, email, passwordHash, role, companyId, avatarUrl?, createdAt }],
+  "materials":   [{ id, companyId, title, desc, type, status, author, updated, content, quiz, lessons, trainer, scorm, style }],
+  "attempts":    [{ id, materialId, userId, score, passed, answers, correct, total, createdAt }],
+  "lessonCompletions": [{ id, userId, courseId, lessonId, materialId, type, completedAt }],
+  "assignments": [{ id, materialId, userId, dueAt, isMandatory, companyId, createdAt }],
+  "scormAttempts": [{ id, materialId, userId, lesson_status, score_raw, suspend_data, ... }]
+}
+```
+
+**Типы материалов:** `longread`, `test`, `course`, `trainer`, `scorm`.
+
+---
+
+## 3. Что уже работает (полный список)
+
+### ✅ Публичная часть
+- Landing (`/`): hero + 3 feature-карточки + футер
+- Кнопки «Войти в систему» (обе ведут на `/login`, регистрация закрыта)
+- `/page/features|solutions|pricing|contacts` — **заглушки** (текст «можно перенести из views-pages.js»)
+- Login: редирект по роли (`superadmin` → `/superadmin`, `admin` → `/admin`, `learner` → `/learner`)
+
+### ✅ Учащийся
+- `/learner`: hero, назначения (с подсветкой просроченных), статистика, курсы, тесты, тренажёры, SCORM, лонгриды, последние результаты
+- `/read/:id`: читалка BlockNote в read-режиме + «Отметить прочитанным»
+- `/quiz/:id`: вопросы (single/multiple/text), прогресс, результат
+- `/course/:id`: список уроков, прогресс, переходы
+- `/trainer/:id`: прохождение кейса с баллами
+- `/scorm/:id`: iframe + настоящий SCORM 1.2 API (`window.API`)
+
+### ✅ Админ
+- `/admin` → **Дашборд**: 5 подвкладок (Обзор / Вовлеченность / Курсы / Назначения / Сотрудники) + фильтр 7/14/30 дней
+- **Материалы**: создание, предпросмотр (▶), назначение (👤), результаты тестов (📋), редактирование (✏), удаление (🗑), загрузка SCORM (ZIP)
+- **Редакторы**: лонгрид (BlockNote + 6 кастомных блоков), тест, курс, тренажёр
+- **Назначения**: фильтры по статусам, отмена
+- **Сотрудники**: создание одного + **CSV-импорт** (bulk), удаление
+- **Предпросмотр**: `?preview=1` — материал открывается как у ученика, прогресс не сохраняется
+
+### ✅ Супер-админ
+- `/superadmin` → **Дашборд**: глобальная сводка + карточки компаний
+- **Компании**: создание, удаление (каскадно сносит пользователей/материалы)
+- **Пользователи**: фильтр по компаниям, создание (learner + admin), CSV-импорт, удаление
+- **Материалы**: все материалы всех компаний (только просмотр)
+
+### ✅ BlockNote — 6 кастомных блоков
+1. **Callout** — врезка с 4 цветами (info/success/warning/tip)
+2. **Accordion** — сворачиваемая секция
+3. **InlineQuiz** — мини-тест с проверкой и объяснением
+4. **ImageFile** — картинка (файл до 5 МБ или URL)
+5. **VideoFile** — видео (файл до 25 МБ или URL)
+6. **StyledSection** — карточка с фоном/картинкой/отступами/скруглением/затемнением
+
+### ✅ Инфраструктура
+- Адаптив: 4 брейкпоинта (Desktop ≥1440, Laptop 1024–1439, Tablet 768–1023, Mobile ≤767), bottom-nav в админке
+- Dev-панель `/dev`: аккаунты с паролями, компании с кодами, пользователи, материалы с ссылками на preview/edit, API endpoints, кнопки «Войти как»
+- `start.bat` — запуск Vite
+- CSV-импорт: парсер (`,` `;` `\t`, кавычки, BOM), валидация, превью, автогенерация паролей, отчёт, экспорт результата
+
+---
+
+## 4. Что НЕ работает / заглушки
+
+| Что | Где | Что показано сейчас |
+|---|---|---|
+| **AI-генерация из PDF** | `CreateMaterialModal` (для trainer/screencast/flipbook) | Поле «AI-ассистент» с заглушкой «Демо-режим» |
+| **Страницы «Возможности/Решения/Тарифы/Контакты»** | `PublicPage.tsx` | Текст «Полный контент можно перенести из views-pages.js» |
+| **SCORM-уроки внутри курса** | `CourseTake` | Работают, но через `alert('SCORM-уроки пока не поддерживаются')` в `openLesson` — **нужно проверить** (возможно, уже исправлено) |
+| **Flipbook / Screencast** | `CreateMaterialModal` | Создать можно, но редактора нет — показывается `alert('Редактор ... не готов')` |
+| **Экспорт результатов теста в CSV** | `AttemptsModal` | Только просмотр таблицы |
+| **Сертификаты** после завершения курса | — | Не реализовано |
+| **Сброс пароля через email** | — | Не реализовано |
+| **Поиск по материалам/сотрудникам** | `AdminHome`, `SuperAdmin` | Только визуальный скролл |
+| **30-дневный фильтр на бэкенде** | `GET /api/analytics/company` | Работает только 14 дней; «30» показывает «Доступно 14 из 30» |
+| **Уведомления** (при назначении) | — | Не реализовано |
+| **Деплой** | — | Всё крутится локально |
+
+---
+
+## 5. Известные баги / особенности
+
+1. **`ActivityChart` в `AdminDashboards.tsx`** — сейчас **исправлен** (height в пикселях, а не `%`). Если в новой сессии график снова плоский — см. раздел «Фиксы».
+2. **BlockNote `toSpec()`** — обязательная обёртка. В схеме должно быть `callout: toSpec('Callout', CalloutBlock)` — не просто `callout: CalloutBlock`. Иначе `Cannot read properties of undefined (reading 'layoutOnly')`.
+3. **`custom-blocks.tsx`** — дубли импортов ломают сборку. Вверху должны быть только 3 строки:
+   ```tsx
+   import { createReactBlockSpec } from '@blocknote/react';
+   import { useState } from 'react';
+   import { fileToDataUrl } from './file-to-data-url';
+   ```
+4. **`Login.tsx`** — редирект по роли обязателен, иначе superadmin попадает на `/admin` и получает 400 «Не указана компания».
+5. **`AdminHome`** — должна быть защита:
+   ```tsx
+   if (user.role === 'learner') return <Navigate to="/learner" replace />;
+   if (user.role === 'superadmin') return <Navigate to="/superadmin" replace />;
+   ```
+6. **`/register`** — удалён из `App.tsx`. Публичная регистрация закрыта. Восстановить нельзя (по решению).
+7. **JWT_SECRET** меняется при перезапуске бэкенда (dev). Токены инвалидируются, юзер выкидывается на `/login`. Решение: очистить `localStorage` → перелогиниться.
+8. **`custom-blocks.tsx` должен содержать все 6 блоков.** Если после правок пропал `StyledSectionBlock` — новые секции не добавятся, будет ошибка `[schema] StyledSection: type=undefined`.
+
+---
+
+## 6. Фиксы на случай, если что-то сломалось
+
+### График активности плоский
+Файл: `src/components/AdminDashboards.tsx`, функция `ActivityChart`.
+Должны быть константы:
+```tsx
+const CHART_HEIGHT = 140;
+const MIN_VISIBLE_PX = 6;
+```
+И в рендере столбика:
+```tsx
+const heightPx = total === 0 ? 2 : Math.max(MIN_VISIBLE_PX, Math.round((total / max) * CHART_HEIGHT));
+<div style={{ height: heightPx + 'px', ... }} />
+```
+**Не `%`, а `px`.**
+
+### Ошибка `reading 'layoutOnly'`
+Файл: `LongreadEditor.tsx` / `Read.tsx`.
+```tsx
+// ❌ неправильно
+callout: CalloutBlock,
+
+// ✅ правильно
+callout: toSpec('Callout', CalloutBlock),
+```
+И `toSpec`:
+```tsx
+function toSpec(name: string, x: unknown): never {
+  const result = typeof x === 'function' ? (x as () => unknown)() : x;
+  return result as never;
+}
+```
+
+### Superadmin попадает на /admin (400 «Не указана компания»)
+- В `Login.tsx`: `if (user.role === 'superadmin') navigate('/superadmin')`
+- В `AdminHome.tsx`: `if (user.role === 'superadmin') return <Navigate to="/superadmin" replace />;`
+
+### Дубли импортов в custom-blocks.tsx
+Проверить: `(Select-String -Path src\lib\custom-blocks.tsx -Pattern "import.*createReactBlockSpec").Count` → должно быть **1**.
+
+### Vite отдаёт старый бандл
+```powershell
+Remove-Item -Recurse -Force node_modules\.vite -ErrorAction SilentlyContinue
+npm run dev
+```
+
+---
+
+## 7. Что делали последним (хронология, ~10 шагов)
+
+1. Перенесли лендинг с исходного JS-сайта на React
+2. Закрыли публичную регистрацию → `/register` удалён
+3. Добавили `/superadmin` (компании + пользователи + глобальная аналитика)
+4. Сделали `AdminDashboards` — 5 подвкладок + фильтр 7/14/30
+5. Добавили 6 кастомных блоков BlockNote (Callout, Accordion, InlineQuiz, ImageFile, VideoFile, StyledSection)
+6. Сделали предпросмотр (`?preview=1`) для всех 4 типов материалов
+7. Добавили создание пользователей в `/admin` и `/superadmin` (`POST /api/users`)
+8. Добавили **CSV-импорт** пользователей (`POST /api/users/bulk`) — работает
+9. Починили `Login.tsx` (редирект по ролям) + `AdminHome.tsx` (защита от чужих ролей)
+10. **В работе:** фикс `ActivityChart` — заменили `height: %` на `height: px` с цифрами над столбиками (28.10.2026)
+
+---
+
+## 8. Приоритеты «что дальше»
+
+По убыванию ценности:
+
+1. 🥇 **AI-генерация из PDF** — главное обещание лендинга. Сейчас заглушка. Нужен `POST /api/ai/generate` (PDF → текст → LLM → структура).
+2. 🥈 **Перенести контент публичных страниц** — `PublicPage.tsx` использует заглушки. Контент есть в `views-pages.js` исходного JS-проекта. ~30 минут.
+3. 🥉 **Экспорт результатов тестов в CSV** — в `AttemptsModal` кнопка «Скачать CSV». 15 минут.
+4. **Сертификаты** — после завершения курса. PDF через `pdf-lib` или картинку через `html2canvas`.
+5. **Сброс пароля** через email — SMTP + токен.
+6. **Поиск** по материалам/сотрудникам в админке.
+7. **30-дневный фильтр** — на бэкенде (`GET /api/analytics/company?days=30`).
+8. **Уведомления** при назначении.
+9. **Деплой** — фронт на Vercel, бэк на Railway.
+
+---
+
+## 9. Как продолжить в новом чате
+
+**Прикрепите этот файл** и напишите что-то вроде:
+
+> «Это LearnFlow — LMS на React + Express. Состояние в `PROJECT_STATE.md`.
+> Продолжаем с пункта N: [описание задачи]. Файл `server.js` могу прислать по запросу».
+
+**Если нужны конкретные файлы для правок** — попросите меня прислать актуальные версии (я держу контекст только в пределах сессии). Важные файлы:
+
+- `src/App.tsx` — роутинг
+- `src/pages/LongreadEditor.tsx` — BlockNote-редактор
+- `src/lib/custom-blocks.tsx` — 6 кастомных блоков
+- `src/components/AdminDashboards.tsx` — дашборд с графиком
+- `src/pages/AdminHome.tsx` / `SuperAdmin.tsx` — админки
+- `server.js` — бэкенд (~800 строк)
+
+**Начните новый чат так:**
+
+> «Продолжаем LearnFlow. Прикрепляю `PROJECT_STATE.md`.
+> Задача: [например, "доделать ActivityChart — не поднимается столбик за вчера"].
+> Вот файл `AdminDashboards.tsx`: [вставьте содержимое]».
+
+---
+
+## 10. Полезные команды
+
+```powershell
+# Запуск
+.\start.bat            # Vite
+node server.js         # бэкенд (отдельное окно)
+
+# Проверка файлов
+Get-Item src\components\AdminDashboards.tsx | Select-Object Length, LastWriteTime
+Select-String -Path src\App.tsx -Pattern "Route path"
+
+# Проверка схемы BlockNote
+Select-String -Path src\lib\custom-blocks.tsx -Pattern "export const"
+
+# Очистка кэша Vite
+Remove-Item -Recurse -Force node_modules\.vite -ErrorAction SilentlyContinue
+npm run dev
+
+# Проверка API вручную
+Invoke-RestMethod -Uri "http://localhost:3000/api/login" -Method POST -ContentType "application/json" -Body '{"email":"admin@demo.ru","password":"demo1234"}'
+```
+
+---
+
+## 11. Быстрая проверка «всё ли работает»
+
+1. `.\start.bat` + `node server.js` → браузер на `http://localhost:5173`
+2. Войти как `admin@demo.ru / demo1234` → `/admin` открылся
+3. Дашборд → график показывает цифры над столбиками
+4. Материалы → ✏ у лонгрида → BlockNote открылся, 13 кнопок в панели
+5. Сотрудники → «Импорт CSV» → скачать шаблон → загрузить → 3 пользователя создались
+6. Выйти → `super@demo.ru / demo1234` → `/superadmin` открылся
+7. Компании → «Новая компания» → создалась
+8. Пользователи → «Добавить» → выбрать компанию → роль `admin` → создалось
+9. Выйти → зайти новым админом → `/admin` открылся с пустыми данными
+10. В `/dev` — все аккаунты и пароли видны
+
+Если все 10 пунктов прошли — система в рабочем состоянии, можно продолжать разработку.
+
+---
+
+**Конец файла.** Если что-то в нём устарело — обновите вручную или попросите ассистента пересобрать.
+```
+
+---
+
+## 🎯 Как пользоваться
+
+1. **Скопируйте весь код выше** в файл `PROJECT_STATE.md` в корне `learnflow-react` (рядом с `package.json`)
+2. **Когда начнёте новый чат** — прикрепите этот файл и напишите:
+   > «Продолжаем LearnFlow, состояние в `PROJECT_STATE.md`. Задача: …»
+3. **Я прочитаю файл** и сразу пойму: стек, что работает, что нет, где баги, что делать дальше — без повторных объяснений
+
+---
+
+## 💡 Что можно дополнить, если хотите
+
+Если хотите **ещё больше автономности** в новом чате, можно добавить к `PROJECT_STATE.md`:
+
+- **Актуальные версии ключевых файлов** — папка `project-snapshot/` со свежими `App.tsx`, `custom-blocks.tsx`, `AdminDashboards.tsx`, `server.js`
+- **Скриншоты** — `screenshots/admin-dashboard.png`, `screenshots/learner.png` (помогают понять UI)
+- **`data.json` (обезличенный)** — чтобы новый ассистент видел структуру БД с примерами
+
+Но обычно достаточно `PROJECT_STATE.md` — он покрывает 95% контекста. Файлы кода можно запросить в новой сессии, если нужны правки.
+
+---
+
+Если хотите, могу дополнительно:
+- Сделать **`PROJECT_SNAPSHOT/`** — папку с копиями 5 главных файлов на текущий момент
+- Сделать **`CHANGELOG.md`** — журнал всех изменений по датам (чтобы видеть «что когда ломалось/чинилось»)
+- Сделать **`TODO.md`** — плоский список задач (без объяснений, только чек-лист)
+
+Скажите, что полезнее — сгенерирую.

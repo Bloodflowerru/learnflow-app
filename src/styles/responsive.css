@@ -1,0 +1,458 @@
+/* ==========================================================================
+   LearnFlow — адаптивные стили
+   Брейкпоинты:
+     ≥1440px  — Desktop (по умолчанию, без правил)
+     1024–1439 — Laptop (небольшие уплотнения)
+     768–1023  — Tablet (sidebar узкая, сетки 2 колонки)
+     ≤767      — Mobile (1 колонка, bottom-nav в админке)
+     ≤479      — Very Small (крайние случаи)
+   ========================================================================== */
+
+/* ========== LAPTOP 1024–1439 ========== */
+@media (max-width: 1439px) {
+  .admin-content { padding: 24px 24px 48px; }
+  .ld-main { padding: 24px 24px 48px; }
+  .admin-topbar { padding: 0 24px; }
+}
+
+/* ========== TABLET 768–1023 ========== */
+@media (max-width: 1023px) {
+  /* --- Admin sidebar: только иконки --- */
+  .admin-sidebar {
+    width: 72px;
+    padding: 16px 10px;
+  }
+  .admin-sidebar .logo { padding: 4px 0 20px; justify-content: center; }
+  .admin-sidebar .logo span,
+  .admin-nav-item span {
+    display: none;
+  }
+  .admin-nav-item { justify-content: center; padding: 10px 0; }
+  .admin-sidebar .sidebar-foot .user-chip > div:not(.avatar) { display: none; }
+  .admin-sidebar .sidebar-foot .user-chip { justify-content: center; padding: 6px; }
+  .admin-sidebar .sidebar-foot .btn {
+    justify-content: center;
+    padding: 8px;
+    font-size: 0; /* скрывает текст, оставляет иконку */
+  }
+  .admin-sidebar .sidebar-foot .btn svg { margin: 0; }
+
+  /* --- Admin layout --- */
+  .admin-topbar { padding: 0 20px; height: 64px; }
+  .admin-topbar h1 { font-size: 18px; }
+  .admin-content { padding: 20px 20px 40px; }
+
+  /* --- Learner --- */
+  .ld-main { padding: 20px 20px 40px; }
+  .ld-stats { grid-template-columns: repeat(2, 1fr); }
+  .ld-cards { grid-template-columns: repeat(2, 1fr); }
+  .ld-continue-grid { grid-template-columns: 1fr; }
+  .my-assignments { grid-template-columns: 1fr; }
+  .ld-hero { padding: 28px; }
+  .ld-hero h1 { font-size: 24px; }
+  .ld-hero-art { display: none; }
+  .ld-hero { grid-template-columns: 1fr; }
+
+  /* --- Admin dashboards --- */
+  .ad-grid { grid-template-columns: 1fr; }
+  .sa-companies-grid { grid-template-columns: 1fr 1fr; }
+
+  /* --- Auth --- */
+  .auth-shell { grid-template-columns: 1fr; }
+  .auth-brand-side { display: none; }
+  .auth-form-side { padding: 32px 24px; }
+
+  /* --- Landing --- */
+  .landing-nav { display: none; }
+  .features { grid-template-columns: repeat(2, 1fr); padding: 0 24px 60px; }
+  .feature-grid { grid-template-columns: 1fr; }
+  .pricing-grid { grid-template-columns: 1fr; }
+  .solutions-roles { grid-template-columns: 1fr 1fr; }
+  .solutions-industries { grid-template-columns: repeat(2, 1fr); }
+  .contact-grid { grid-template-columns: 1fr; }
+  .footer-inner { grid-template-columns: 1fr 1fr; }
+  .landing-header { padding: 16px 24px; }
+  .hero { padding: 56px 24px 72px; }
+
+  /* --- Profile --- */
+  .profile-shell { padding: 32px 20px 60px; }
+
+  /* --- Editor (планшет: горизонтальная лента блоков) --- */
+  .editor-bn-side {
+    display: block;
+    width: 100%;
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .editor-block-list {
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .editor-block-btn {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+  .editor-block-btn span { display: none; }
+  .editor-bn-body { flex-direction: column; }
+  .editor-bn-main { padding: 24px 16px 100px; }
+  .editor-bn-surface { padding: 24px 20px; }
+
+  /* --- Tables: горизонтальный скролл --- */
+  .panel { overflow-x: auto; }
+  .mat-table { min-width: 640px; }
+
+  /* --- Quiz / Course / Read --- */
+  .quiz-take, .course-take { padding: 24px 20px 80px; }
+  .quiz-result { padding: 32px 20px; }
+}
+
+/* ========== MOBILE ≤767 ========== */
+@media (max-width: 767px) {
+  body { font-size: 14px; }
+
+  /* --- AppHeader --- */
+  .app-header { padding: 0 12px; height: 56px; }
+  .app-header .right { gap: 2px; }
+  .app-header .btn-sm { padding: 6px 8px; font-size: 12px; }
+  .app-header .user-chip { padding: 4px; gap: 0; }
+  .app-header .user-chip .u-name,
+  .app-header .user-chip .u-role { display: none; }
+  .app-header .logo { font-size: 16px; gap: 6px; }
+  .app-header .logo svg { width: 26px; height: 26px; }
+  /* скрыть "На главную" на мобилке — в шапке уже есть logo-ссылка */
+  .app-header .right > a.btn-ghost[title*="главную"],
+  .app-header .right > a.btn-ghost[title*="Главную"] {
+    display: none;
+  }
+
+  /* --- Admin: sidebar превращается в bottom-nav --- */
+  .admin-shell { flex-direction: column; }
+  .admin-sidebar {
+    width: 100%;
+    height: auto;
+    max-height: 72px;
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 8px;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    z-index: 60;
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: var(--surface);
+    box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.06);
+    gap: 4px;
+  }
+  .admin-sidebar .logo,
+  .admin-sidebar .sidebar-foot { display: none; }
+  .admin-nav {
+    flex-direction: row;
+    flex: 1;
+    gap: 2px;
+    justify-content: space-around;
+  }
+  .admin-nav-item {
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 10px;
+    font-size: 10px;
+    border-radius: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+  .admin-nav-item span {
+    display: block;
+    font-size: 10px;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .admin-nav-item svg { width: 20px; height: 20px; }
+
+  .admin-main { padding-bottom: 78px; }
+  .admin-topbar {
+    padding: 0 12px;
+    height: 56px;
+    gap: 8px;
+  }
+  .admin-topbar h1 { font-size: 16px; }
+  .admin-topbar .top-actions { gap: 4px; }
+  .admin-topbar .top-actions .btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    height: 34px;
+  }
+  .admin-topbar .top-actions .btn svg { width: 16px; height: 16px; }
+  /* На мобилке оставить только текст «SCORM» и «Создать» */
+  .admin-content { padding: 16px 12px 90px; }
+
+  /* --- Tables: горизонтальный скролл --- */
+  .panel { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .mat-table { min-width: 560px; font-size: 13px; }
+  .mat-table th, .mat-table td { padding: 10px 12px; }
+  .mat-table .mat-icon { width: 32px; height: 32px; }
+  .mat-table .t-name { font-size: 13px; }
+  .mat-table .t-desc { font-size: 11px; }
+
+  /* --- Assign filters --- */
+  .assign-filters {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 6px;
+  }
+  .assign-filter {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  /* --- Learner: hero, stats, cards --- */
+  .ld-main { padding: 16px 12px 100px; }
+  .ld-hero { padding: 20px; border-radius: var(--radius); margin-bottom: 16px; }
+  .ld-hero h1 { font-size: 22px; }
+  .ld-hero p { font-size: 14px; }
+  .ld-hero-alert { font-size: 12px; padding: 6px 12px; }
+  .ld-hero-art { display: none; }
+
+  .ld-stats {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .ld-stat { padding: 12px; }
+  .ld-stat-icon { width: 34px; height: 34px; margin-bottom: 8px; }
+  .ld-stat-icon svg { width: 18px; height: 18px; }
+  .ld-stat-value { font-size: 22px; }
+  .ld-stat-label { font-size: 11px; }
+  .ld-stat-hint { font-size: 10px; }
+
+  .ld-section-head h2 { font-size: 17px; }
+  .ld-section-head { margin-top: 20px; margin-bottom: 12px; }
+
+  .ld-cards { grid-template-columns: 1fr; gap: 10px; }
+  .ld-card { padding: 16px; }
+  .ld-card-head h4 { font-size: 14px; }
+  .ld-card-head span { font-size: 11px; }
+  .ld-card-icon { width: 38px; height: 38px; }
+
+  .ld-continue-grid { grid-template-columns: 1fr; gap: 10px; }
+  .ld-continue-card { padding: 16px; }
+  .ld-continue-card h3 { font-size: 15px; }
+
+  .ld-assignments-section {
+    padding: 16px;
+    margin-bottom: 20px;
+    border-radius: var(--radius);
+  }
+  .ld-assignments-section .ld-section-head h2 { font-size: 16px; }
+  .my-assignments { grid-template-columns: 1fr; gap: 10px; }
+  .my-assignment-card { padding: 14px; }
+  .my-assignment-card.my-assignment-hot { padding-top: 36px; }
+  .my-assignment-title { font-size: 14px; }
+  .my-assignment-icon { width: 34px; height: 34px; }
+
+  .ld-activity-row { padding: 10px 14px; gap: 10px; }
+  .ld-activity-body h5 { font-size: 13px; }
+  .ld-activity-body span { font-size: 11px; }
+  .ld-activity-score { font-size: 14px; }
+  .ld-activity-mark { width: 28px; height: 28px; }
+
+  .ld-empty { padding: 30px 16px; }
+
+  /* --- Auth --- */
+  .auth-shell { padding: 16px 12px; min-height: 100vh; }
+  .auth-form-side { padding: 20px; }
+  .auth-form-inner { max-width: 100%; }
+  .auth-form-inner h1 { font-size: 24px; }
+  .auth-form-inner .lead { font-size: 14px; margin-bottom: 20px; }
+  .auth-demo-box { font-size: 11px; padding: 12px; }
+  .role-select { gap: 8px; }
+  .role-option { padding: 10px 6px; }
+  .role-option .role-icon svg { width: 24px; height: 24px; }
+
+  /* --- Profile --- */
+  .profile-shell { padding: 20px 12px 40px; }
+  .profile-header { flex-direction: column; text-align: center; gap: 12px; }
+  .profile-header h1 { font-size: 20px; }
+  .profile-header p { font-size: 13px; }
+  .profile-avatar-wrap,
+  .profile-avatar-wrap .profile-avatar,
+  .profile-avatar-img { width: 80px; height: 80px; }
+  .profile-avatar-wrap .profile-avatar { font-size: 26px; }
+  .profile-section { padding: 16px; }
+
+  /* --- Editor: убрать боковую панель, компактный topbar --- */
+  .editor-topbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .editor-topbar-center {
+    order: 3;
+    width: 100%;
+    flex: 0 0 100%;
+  }
+  .editor-title-input {
+    font-size: 14px;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  .editor-topbar-right { gap: 4px; flex: 1; justify-content: flex-end; }
+  .editor-topbar-right .btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    height: 32px;
+  }
+  .editor-topbar-right .btn svg { width: 14px; height: 14px; }
+  .editor-bn-side { display: none !important; }
+  .editor-bn-body { flex-direction: column; }
+  .editor-bn-main { padding: 16px 10px 60px; }
+  .editor-bn-surface { padding: 16px 14px; border-radius: var(--radius); }
+  .editor-bn-surface h1 { font-size: 22px !important; }
+  .editor-bn-surface .bn-editor { font-size: 15px; }
+
+  /* --- Quiz --- */
+  .quiz-take { padding: 16px 12px 60px; }
+  .quiz-take-head h1 { font-size: 18px; }
+  .quiz-take-head p { font-size: 13px; }
+  .quiz-question-card { padding: 16px; border-radius: var(--radius); }
+  .quiz-q-title { font-size: 16px; }
+  .quiz-answer { padding: 12px 14px; font-size: 14px; }
+  .quiz-nav { flex-wrap: wrap; gap: 8px; }
+  .quiz-nav .btn { flex: 1; min-width: 110px; height: 42px; }
+  .quiz-result { padding: 24px 12px 40px; }
+  .quiz-result-top h1 { font-size: 22px; }
+  .quiz-result-top .score { font-size: 36px; }
+  .quiz-result-icon { width: 72px; height: 72px; }
+  .quiz-detail-row { padding: 10px 14px; font-size: 13px; }
+
+  /* --- Course --- */
+  .course-take { padding: 16px 12px 60px; }
+  .course-take h1 { font-size: 20px; }
+  .course-take .lead { font-size: 14px; margin-bottom: 20px; }
+  .course-lesson-card { padding: 12px; gap: 10px; }
+  .course-lesson-card .card-icon { width: 36px; height: 36px; }
+  .course-lesson-card .card-icon svg { width: 18px; height: 18px; }
+  .course-lesson-card .card-body h4 { font-size: 13px; }
+  .course-lesson-card .card-body span { font-size: 11px; }
+  .course-lesson-card .card-action { font-size: 12px; }
+
+  /* --- Modals: full width / bottom sheet --- */
+  .modal-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .modal {
+    max-width: 100% !important;
+    width: 100%;
+    border-radius: 16px 16px 0 0;
+    max-height: 92vh;
+  }
+  .modal-head { padding: 16px 16px 0; }
+  .modal-head h2 { font-size: 17px; }
+  .modal-head p { font-size: 13px; }
+  .modal-body { padding: 16px; }
+  .modal-foot {
+    padding: 12px 16px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .modal-foot .btn { flex: 1; min-width: 120px; }
+
+  .type-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .type-option { padding: 10px 4px; font-size: 11px; }
+  .type-option svg { width: 18px; height: 18px; margin-bottom: 4px; }
+
+  /* --- Landing --- */
+  .landing-header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .landing-header .logo { font-size: 16px; }
+  .landing-header .logo svg { width: 26px; height: 26px; }
+  .landing-actions { gap: 6px; }
+  .landing-actions .btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    height: 34px;
+  }
+
+  .hero { padding: 40px 16px 56px; }
+  .hero-badge { font-size: 11px; padding: 4px 10px; }
+  .hero h1 { font-size: 26px; line-height: 1.2; }
+  .hero p { font-size: 14px; margin-bottom: 24px; }
+  .hero-actions { flex-direction: column; gap: 8px; }
+  .hero-actions .btn { width: 100%; height: 46px; }
+
+  .features { grid-template-columns: 1fr; padding: 0 16px 40px; gap: 12px; }
+  .feature-card { padding: 20px; }
+  .feature-card h3 { font-size: 16px; }
+  .feature-card p { font-size: 13px; }
+
+  .landing-footer { padding: 32px 16px 24px; }
+  .footer-inner { grid-template-columns: 1fr; gap: 20px; }
+  .footer-bottom { margin-top: 20px; padding-top: 16px; font-size: 12px; }
+
+  /* --- Public pages --- */
+  .page-hero { padding: 40px 16px 24px; }
+  .page-hero h1 { font-size: 24px; }
+  .page-hero p { font-size: 14px; }
+  .page-section { padding: 0 16px 40px; }
+  .feature-grid { grid-template-columns: 1fr; gap: 14px; }
+  .feature-block { padding: 20px; }
+  .feature-block h3 { font-size: 17px; }
+  .solutions-roles { grid-template-columns: 1fr; gap: 14px; }
+  .solutions-industries { grid-template-columns: 1fr; gap: 12px; }
+  .pricing-grid { grid-template-columns: 1fr; gap: 16px; }
+  .pricing-card { padding: 20px; }
+  .contact-grid { grid-template-columns: 1fr; gap: 16px; }
+  .contact-card { padding: 20px; }
+  .faq-item { padding: 16px; }
+  .page-cta { padding: 32px 20px; margin: 0 16px 40px; }
+  .page-cta h2 { font-size: 22px; }
+  .page-cta p { font-size: 14px; }
+
+  /* --- Trainer --- */
+  .trainer-step-card { padding: 16px !important; }
+}
+
+/* ========== VERY SMALL ≤479 ========== */
+@media (max-width: 479px) {
+  body { font-size: 13px; }
+  .app-header .right > .btn-icon { width: 34px; height: 34px; }
+  .app-header .right > a.btn-ghost[title="Профиль"],
+  .app-header .right > button.btn-icon[title="Профиль"] { display: none; } /* профиль доступен по аватару */
+
+  .ld-stats { grid-template-columns: 1fr; }
+  .ld-stat { padding: 14px; }
+
+  .admin-nav-item { padding: 4px 4px; }
+  .admin-nav-item span { font-size: 9px; }
+  .admin-nav-item svg { width: 18px; height: 18px; }
+
+  .hero h1 { font-size: 22px; }
+  .ld-hero h1 { font-size: 20px; }
+
+  .modal-head h2 { font-size: 15px; }
+  .editor-topbar-right .btn { font-size: 11px; padding: 6px 8px; }
+
+  .quiz-nav .btn { font-size: 12px; padding: 0 10px; }
+}
