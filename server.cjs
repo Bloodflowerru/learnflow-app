@@ -18,6 +18,7 @@ const SCORM_DIR = path.join(UPLOADS_DIR, 'scorm');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!fs.existsSync(SCORM_DIR)) fs.mkdirSync(SCORM_DIR, { recursive: true });
 
+/* ============ DB ============ */
 function loadDB() {
   try {
     if (fs.existsSync(DATA_FILE)) {
@@ -30,10 +31,17 @@ function loadDB() {
       d.lessonCompletions = cleanArr(d.lessonCompletions).filter(lc => lc.userId && lc.materialId);
       d.assignments = cleanArr(d.assignments).filter(a => a.userId && a.materialId);
       d.scormAttempts = cleanArr(d.scormAttempts).filter(sa => sa.userId && sa.materialId);
+      d.categories = cleanArr(d.categories);
+      d.tracks = cleanArr(d.tracks);
+      d.trackEnrollments = cleanArr(d.trackEnrollments);
+      d.users.forEach(u => { if (!Array.isArray(u.categoryIds)) u.categoryIds = []; });
       return d;
     }
   } catch (e) { console.error('data.json:', e.message); }
-  return { companies: [], users: [], materials: [], attempts: [], lessonCompletions: [], assignments: [], scormAttempts: [] };
+  return {
+    companies: [], users: [], materials: [], attempts: [], lessonCompletions: [],
+    assignments: [], scormAttempts: [], categories: [], tracks: [], trackEnrollments: [],
+  };
 }
 function saveDB() { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); }
 let db = loadDB();
@@ -50,17 +58,17 @@ async function seed() {
   let changed = false;
   const hash = await bcrypt.hash('demo1234', 10);
   if (!db.users.find(u => u.role === 'superadmin')) {
-    db.users.push({ id: 'u_super', name: 'Супер Администратор', email: 'super@demo.ru', passwordHash: hash, role: 'superadmin', companyId: null, createdAt: new Date().toISOString() });
+    db.users.push({ id: 'u_super', name: 'Супер Администратор', email: 'super@demo.ru', passwordHash: hash, role: 'superadmin', companyId: null, createdAt: new Date().toISOString(), categoryIds: [] });
     changed = true;
   }
   let demo = db.companies.find(c => c.code === 'demo');
   if (!demo) { demo = { id: 'c_demo', name: 'Demo Company', code: 'demo', createdAt: new Date().toISOString() }; db.companies.push(demo); changed = true; }
   if (!db.companies.find(c => c.code === 'acme')) { db.companies.push({ id: 'c_acme', name: 'Acme Corp', code: 'acme', createdAt: new Date().toISOString() }); changed = true; }
   if (!db.users.find(u => u.email === 'admin@demo.ru')) {
-    db.users.push({ id: 'u_demo_admin', name: 'Игорь Петров', email: 'admin@demo.ru', passwordHash: hash, role: 'admin', companyId: demo.id, createdAt: new Date().toISOString() }); changed = true;
+    db.users.push({ id: 'u_demo_admin', name: 'Игорь Петров', email: 'admin@demo.ru', passwordHash: hash, role: 'admin', companyId: demo.id, createdAt: new Date().toISOString(), categoryIds: [] }); changed = true;
   }
   if (!db.users.find(u => u.email === 'learner@demo.ru')) {
-    db.users.push({ id: 'u_demo_learner', name: 'Анна Смирнова', email: 'learner@demo.ru', passwordHash: hash, role: 'learner', companyId: demo.id, createdAt: new Date().toISOString() }); changed = true;
+    db.users.push({ id: 'u_demo_learner', name: 'Анна Смирнова', email: 'learner@demo.ru', passwordHash: hash, role: 'learner', companyId: demo.id, createdAt: new Date().toISOString(), categoryIds: [] }); changed = true;
   }
   for (const u of db.users) { if (!u.companyId && u.role !== 'superadmin') { u.companyId = demo.id; changed = true; } }
   for (const m of db.materials) {
@@ -70,7 +78,7 @@ async function seed() {
   if (changed) saveDB();
 }
 
-/* === Утилиты SCORM === */
+/* ============ SCORM утилиты ============ */
 function parseScormTime(t) {
   if (!t) return 0;
   const parts = String(t).split(':');
@@ -127,7 +135,7 @@ function tryCompleteScormLesson(a) {
   return true;
 }
 
-/* === Multer === */
+/* ============ Multer ============ */
 const MIME_EXT = {
   'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
   'image/webp': '.webp', 'image/svg+xml': '.svg',
@@ -164,6 +172,7 @@ app.use(express.json({ limit: '2mb' }));
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+/* ============ Auth middleware ============ */
 function auth(req, res, next) {
   const h = req.headers.authorization || '';
   const token = h.startsWith('Bearer ') ? h.slice(7) : null;
@@ -231,7 +240,7 @@ function assignmentStatus(a, userId) {
   return { status, percent, completed, dueAt: a.dueAt };
 }
 
-/* === Upload === */
+/* ============ Upload ============ */
 app.post('/api/upload', auth, (req, res) => {
   if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
   upload.single('file')(req, res, (err) => {
@@ -241,7 +250,7 @@ app.post('/api/upload', auth, (req, res) => {
   });
 });
 
-/* === SCORM upload === */
+/* ============ SCORM upload ============ */
 app.post('/api/scorm/upload', auth, (req, res) => {
   if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
   scormUpload.single('file')(req, res, (err) => {
@@ -315,7 +324,7 @@ app.post('/api/scorm/upload', auth, (req, res) => {
   });
 });
 
-/* === SCORM state / track / finish === */
+/* ============ SCORM state/track/finish ============ */
 app.get('/api/scorm/:id/state', auth, (req, res) => {
   const m = db.materials.find(x => x && x.id === req.params.id);
   if (!m || m.type !== 'scorm') return res.status(404).json({ error: 'Не SCORM' });
@@ -340,7 +349,6 @@ app.get('/api/scorm/:id/state', auth, (req, res) => {
     }
   });
 });
-
 app.post('/api/scorm/:id/track', auth, (req, res) => {
   const m = db.materials.find(x => x && x.id === req.params.id);
   if (!m || m.type !== 'scorm') return res.status(404).json({ error: 'Не SCORM' });
@@ -367,7 +375,6 @@ app.post('/api/scorm/:id/track', auth, (req, res) => {
   saveDB();
   res.json({ ok: true, completed });
 });
-
 app.post('/api/scorm/:id/finish', auth, (req, res) => {
   const m = db.materials.find(x => x && x.id === req.params.id);
   if (!m || m.type !== 'scorm') return res.status(404).json({ error: 'Не SCORM' });
@@ -389,7 +396,7 @@ app.post('/api/scorm/:id/finish', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* === Аватар === */
+/* ============ Avatar ============ */
 app.post('/api/users/me/avatar', auth, (req, res) => {
   upload.single('file')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
@@ -406,7 +413,7 @@ app.delete('/api/users/me/avatar', auth, (req, res) => {
   res.json({ user: publicUser(req.user) });
 });
 
-/* === Auth === */
+/* ============ Auth ============ */
 app.post('/api/register', async (req, res) => {
   const { name, email, password, role, companyName, companyCode } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'Укажите имя' });
@@ -427,7 +434,7 @@ app.post('/api/register', async (req, res) => {
     companyId = c.id;
   }
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = { id: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: name.trim(), email: emailLower, passwordHash, role: finalRole, companyId, createdAt: new Date().toISOString() };
+  const user = { id: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: name.trim(), email: emailLower, passwordHash, role: finalRole, companyId, categoryIds: [], createdAt: new Date().toISOString() };
   db.users.push(user); saveDB();
   const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
   res.status(201).json({ token, user: publicUser(user) });
@@ -458,7 +465,7 @@ app.post('/api/users/me/password', auth, async (req, res) => {
   res.json({ ok: true });
 });
 
-/* === Прогресс === */
+/* ============ Прогресс ============ */
 app.get('/api/my/progress', auth, (req, res) => {
   const myAttempts = db.attempts.filter(a => a.userId === req.user.id);
   const byMaterial = {};
@@ -501,7 +508,7 @@ app.get('/api/learning/my', auth, (req, res) => {
   });
 });
 
-/* === Компании === */
+/* ============ Компании ============ */
 app.get('/api/companies/public', (req, res) => res.json({ companies: db.companies.map(c => ({ id: c.id, name: c.name, code: c.code })) }));
 app.get('/api/companies', auth, (req, res) => {
   if (req.user.role === 'superadmin') return res.json({ companies: db.companies });
@@ -529,10 +536,13 @@ app.delete('/api/companies/:id', auth, (req, res) => {
   db.lessonCompletions = db.lessonCompletions.filter(lc => lc.companyId !== req.params.id);
   db.assignments = db.assignments.filter(a => a.companyId !== req.params.id);
   db.scormAttempts = db.scormAttempts.filter(sa => sa.companyId !== req.params.id);
+  db.categories = db.categories.filter(c => c.companyId !== req.params.id);
+  db.tracks = db.tracks.filter(t => t.companyId !== req.params.id);
+  db.trackEnrollments = db.trackEnrollments.filter(e => e.companyId !== req.params.id);
   saveDB(); res.json({ ok: true });
 });
 
-/* === Users === */
+/* ============ Users ============ */
 app.get('/api/users', auth, (req, res) => {
   if (req.user.role === 'superadmin') {
     let list = db.users;
@@ -543,55 +553,43 @@ app.get('/api/users', auth, (req, res) => {
   res.json({ users: [] });
 });
 
-/* === Создание пользователя (admin / superadmin) === */
 app.post('/api/users', auth, async (req, res) => {
   try {
     if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
-
-    const { name, email, password, role, companyId } = req.body || {};
-
+    const { name, email, password, role, companyId, categoryIds } = req.body || {};
     if (!name || !name.trim()) return res.status(400).json({ error: 'Укажите имя' });
-    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      return res.status(400).json({ error: 'Некорректный email' });
-    }
-    if (!password || password.length < 6) {
-      return res.status(400).json({ error: 'Пароль минимум 6 символов' });
-    }
-
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Некорректный email' });
+    if (!password || password.length < 6) return res.status(400).json({ error: 'Пароль минимум 6 символов' });
     const emailLower = String(email).trim().toLowerCase();
-    if (db.users.some(u => u.email === emailLower)) {
-      return res.status(409).json({ error: 'Email уже занят' });
-    }
-
+    if (db.users.some(u => u.email === emailLower)) return res.status(409).json({ error: 'Email уже занят' });
     let finalCompanyId = req.user.companyId;
     let finalRole = 'learner';
-
     if (req.user.role === 'superadmin') {
       if (role === 'admin' || role === 'learner') finalRole = role;
       if (!companyId) return res.status(400).json({ error: 'Укажите компанию' });
-      if (!db.companies.find(c => c.id === companyId)) {
-        return res.status(400).json({ error: 'Компания не найдена' });
-      }
+      if (!db.companies.find(c => c.id === companyId)) return res.status(400).json({ error: 'Компания не найдена' });
       finalCompanyId = companyId;
     } else {
-      // admin — создаёт только learner в своей компании
       if (!finalCompanyId) return res.status(400).json({ error: 'Компания не определена' });
     }
-
     const passwordHash = await bcrypt.hash(password, 10);
     const user = {
       id: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      name: String(name).trim(),
-      email: emailLower,
-      passwordHash,
-      role: finalRole,
-      companyId: finalCompanyId,
+      name: String(name).trim(), email: emailLower, passwordHash,
+      role: finalRole, companyId: finalCompanyId,
+      categoryIds: Array.isArray(categoryIds) ? categoryIds : [],
       createdAt: new Date().toISOString(),
     };
-
     db.users.push(user);
+    if (user.categoryIds.length > 0) {
+      const tracks = db.tracks.filter(t =>
+        t.companyId === user.companyId &&
+        Array.isArray(t.assignedCategories) &&
+        t.assignedCategories.some(cid => user.categoryIds.includes(cid))
+      );
+      tracks.forEach(t => autoEnrollUserInTrack(user, t));
+    }
     saveDB();
-
     res.status(201).json({ user: publicUser(user) });
   } catch (e) {
     console.error('POST /api/users:', e);
@@ -599,35 +597,24 @@ app.post('/api/users', auth, async (req, res) => {
   }
 });
 
-/* === Удаление пользователя (admin / superadmin) === */
 app.delete('/api/users/:id', auth, (req, res) => {
   try {
     if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
-
     const target = db.users.find(u => u.id === req.params.id);
     if (!target) return res.status(404).json({ error: 'Пользователь не найден' });
-
-    if (target.role === 'superadmin') {
-      return res.status(403).json({ error: 'Нельзя удалить супер-администратора' });
-    }
-    if (target.id === req.user.id) {
-      return res.status(400).json({ error: 'Нельзя удалить свой аккаунт' });
-    }
-    if (req.user.role === 'admin' && target.companyId !== req.user.companyId) {
-      return res.status(403).json({ error: 'Нет доступа' });
-    }
-
+    if (target.role === 'superadmin') return res.status(403).json({ error: 'Нельзя удалить супер-администратора' });
+    if (target.id === req.user.id) return res.status(400).json({ error: 'Нельзя удалить свой аккаунт' });
+    if (req.user.role === 'admin' && target.companyId !== req.user.companyId) return res.status(403).json({ error: 'Нет доступа' });
     db.users = db.users.filter(u => u.id !== target.id);
     db.assignments = db.assignments.filter(a => a.userId !== target.id);
     db.attempts = db.attempts.filter(a => a.userId !== target.id);
     db.lessonCompletions = db.lessonCompletions.filter(lc => lc.userId !== target.id);
     db.scormAttempts = db.scormAttempts.filter(sa => sa.userId !== target.id);
-
+    db.trackEnrollments = db.trackEnrollments.filter(e => e.userId !== target.id);
     if (target.avatarUrl) {
       const avatarPath = path.join(__dirname, 'public', target.avatarUrl.replace(/^\//, ''));
       try { if (fs.existsSync(avatarPath)) fs.unlinkSync(avatarPath); } catch {}
     }
-
     saveDB();
     res.json({ ok: true });
   } catch (e) {
@@ -636,7 +623,298 @@ app.delete('/api/users/:id', auth, (req, res) => {
   }
 });
 
-/* === Материалы === */
+/* Bulk import */
+app.post('/api/users/bulk', auth, async (req, res) => {
+  try {
+    if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+    const { users, companyId } = req.body || {};
+    if (!Array.isArray(users) || users.length === 0) return res.status(400).json({ error: 'Пустой список' });
+    if (users.length > 500) return res.status(400).json({ error: 'Максимум 500 за раз' });
+    let finalCompanyId = req.user.companyId;
+    if (req.user.role === 'superadmin') {
+      if (!companyId) return res.status(400).json({ error: 'Укажите компанию' });
+      if (!db.companies.find(c => c.id === companyId)) return res.status(400).json({ error: 'Компания не найдена' });
+      finalCompanyId = companyId;
+    }
+    if (!finalCompanyId) return res.status(400).json({ error: 'Компания не определена' });
+    const created = []; const skipped = []; const seenEmails = new Set();
+    for (const u of users) {
+      const name = String(u.name || '').trim();
+      const email = String(u.email || '').trim().toLowerCase();
+      const password = String(u.password || '').trim();
+      const role = u.role === 'admin' ? 'admin' : 'learner';
+      if (!name) { skipped.push({ name, email, reason: 'Нет имени' }); continue; }
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { skipped.push({ name, email, reason: 'Некорректный email' }); continue; }
+      if (password && password.length < 6) { skipped.push({ name, email, reason: 'Пароль короче 6' }); continue; }
+      if (seenEmails.has(email)) { skipped.push({ name, email, reason: 'Дубликат в файле' }); continue; }
+      seenEmails.add(email);
+      if (role === 'admin' && req.user.role !== 'superadmin') { skipped.push({ name, email, reason: 'Только супер-админ создаёт админов' }); continue; }
+      if (db.users.some(existing => existing.email === email)) { skipped.push({ name, email, reason: 'Email уже зарегистрирован' }); continue; }
+      let finalPassword = password;
+      if (!finalPassword) {
+        const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+        finalPassword = '';
+        for (let i = 0; i < 8; i++) finalPassword += chars[Math.floor(Math.random() * chars.length)];
+      }
+      try {
+        const passwordHash = await bcrypt.hash(finalPassword, 10);
+        const newUser = {
+          id: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + created.length,
+          name, email, passwordHash, role, companyId: finalCompanyId, categoryIds: [],
+          createdAt: new Date().toISOString(),
+        };
+        db.users.push(newUser);
+        created.push({ id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role, password: finalPassword });
+      } catch (e) { skipped.push({ name, email, reason: 'Ошибка: ' + e.message }); }
+    }
+    if (created.length > 0) saveDB();
+    res.json({ created, skipped, total: users.length });
+  } catch (e) {
+    console.error('POST /api/users/bulk:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ============ Категории ============ */
+app.get('/api/categories', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const companyId = req.user.role === 'superadmin' ? (req.query.companyId || null) : req.user.companyId;
+  const list = companyId ? db.categories.filter(c => c.companyId === companyId) : db.categories;
+  res.json({ categories: list });
+});
+
+app.post('/api/categories', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const { name, description, color } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Укажите название' });
+  const companyId = req.user.role === 'superadmin' ? req.body.companyId : req.user.companyId;
+  if (!companyId) return res.status(400).json({ error: 'Не указана компания' });
+  const category = {
+    id: 'cat_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    companyId, name: name.trim(),
+    description: (description || '').trim(),
+    color: color || '#6366f1',
+    createdAt: new Date().toISOString()
+  };
+  db.categories.push(category); saveDB();
+  res.status(201).json({ category });
+});
+
+app.put('/api/categories/:id', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const cat = db.categories.find(c => c.id === req.params.id);
+  if (!cat) return res.status(404).json({ error: 'Не найдено' });
+  if (req.user.role === 'admin' && cat.companyId !== req.user.companyId) return res.status(403).json({ error: 'Нет доступа' });
+  const { name, description, color } = req.body || {};
+  if (name !== undefined) cat.name = String(name).trim() || cat.name;
+  if (description !== undefined) cat.description = String(description).trim();
+  if (color !== undefined) cat.color = color;
+  saveDB();
+  res.json({ category: cat });
+});
+
+app.delete('/api/categories/:id', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const idx = db.categories.findIndex(c => c.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'Не найдено' });
+  if (req.user.role === 'admin' && db.categories[idx].companyId !== req.user.companyId) return res.status(403).json({ error: 'Нет доступа' });
+  const catId = db.categories[idx].id;
+  db.categories.splice(idx, 1);
+  db.users.forEach(u => { if (Array.isArray(u.categoryIds)) u.categoryIds = u.categoryIds.filter(id => id !== catId); });
+  db.tracks.forEach(t => { if (Array.isArray(t.assignedCategories)) t.assignedCategories = t.assignedCategories.filter(id => id !== catId); });
+  saveDB();
+  res.json({ ok: true });
+});
+
+app.post('/api/users/:id/categories', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const user = db.users.find(u => u.id === req.params.id);
+  if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+  if (req.user.role === 'admin' && user.companyId !== req.user.companyId) return res.status(403).json({ error: 'Нет доступа' });
+  const { categoryIds } = req.body || {};
+  if (!Array.isArray(categoryIds)) return res.status(400).json({ error: 'categoryIds должен быть массивом' });
+  const valid = categoryIds.filter(cid => {
+    const c = db.categories.find(x => x.id === cid);
+    return c && c.companyId === user.companyId;
+  });
+  const old = Array.isArray(user.categoryIds) ? user.categoryIds : [];
+  user.categoryIds = valid;
+  const added = valid.filter(cid => !old.includes(cid));
+  added.forEach(cid => autoEnrollUserInCategoryTracks(user, cid));
+  saveDB();
+  res.json({ user: publicUser(user) });
+});
+
+/* ============ Треки ============ */
+function autoEnrollUserInTrack(user, track) {
+  if (db.trackEnrollments.find(e => e.trackId === track.id && e.userId === user.id)) return;
+  db.trackEnrollments.push({
+    id: 'te_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    trackId: track.id, userId: user.id, companyId: track.companyId,
+    enrolledAt: new Date().toISOString(), status: 'active', source: 'category'
+  });
+}
+
+function autoEnrollUserInCategoryTracks(user, categoryId) {
+  const tracks = db.tracks.filter(t =>
+    t.companyId === user.companyId &&
+    Array.isArray(t.assignedCategories) &&
+    t.assignedCategories.includes(categoryId)
+  );
+  tracks.forEach(t => autoEnrollUserInTrack(user, t));
+}
+
+app.get('/api/tracks', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const companyId = req.user.role === 'superadmin' ? (req.query.companyId || null) : req.user.companyId;
+  const list = companyId ? db.tracks.filter(t => t.companyId === companyId) : db.tracks;
+  res.json({ tracks: list });
+});
+
+app.post('/api/tracks', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const { name, description, steps, assignedCategories } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Укажите название' });
+  if (!Array.isArray(steps) || steps.length === 0) return res.status(400).json({ error: 'Добавьте шаги' });
+  for (const s of steps) {
+    if (!s.materialId) return res.status(400).json({ error: 'У шага нет материала' });
+    if (typeof s.weekNumber !== 'number' || s.weekNumber < 0) return res.status(400).json({ error: 'Неверная неделя' });
+  }
+  const companyId = req.user.role === 'superadmin' ? req.body.companyId : req.user.companyId;
+  if (!companyId) return res.status(400).json({ error: 'Не указана компания' });
+  const track = {
+    id: 'tr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    companyId, name: name.trim(), description: (description || '').trim(),
+    steps: steps.map(s => ({
+      id: 'stp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      weekNumber: s.weekNumber, materialId: s.materialId
+    })),
+    assignedCategories: Array.isArray(assignedCategories) ? assignedCategories : [],
+    createdBy: req.user.id, createdAt: new Date().toISOString()
+  };
+  db.tracks.push(track);
+  if (track.assignedCategories.length > 0) {
+    const users = db.users.filter(u =>
+      u.companyId === companyId && u.role === 'learner' &&
+      Array.isArray(u.categoryIds) &&
+      u.categoryIds.some(cid => track.assignedCategories.includes(cid))
+    );
+    users.forEach(u => autoEnrollUserInTrack(u, track));
+  }
+  saveDB();
+  res.status(201).json({ track });
+});
+
+app.put('/api/tracks/:id', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const track = db.tracks.find(t => t.id === req.params.id);
+  if (!track) return res.status(404).json({ error: 'Трек не найден' });
+  if (req.user.role === 'admin' && track.companyId !== req.user.companyId) return res.status(403).json({ error: 'Нет доступа' });
+  const { name, description, steps, assignedCategories } = req.body || {};
+  if (name !== undefined) track.name = String(name).trim() || track.name;
+  if (description !== undefined) track.description = String(description).trim();
+  if (Array.isArray(steps)) {
+    track.steps = steps.map(s => ({
+      id: s.id || 'stp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      weekNumber: s.weekNumber, materialId: s.materialId
+    }));
+  }
+  if (Array.isArray(assignedCategories)) track.assignedCategories = assignedCategories;
+  saveDB();
+  res.json({ track });
+});
+
+app.delete('/api/tracks/:id', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const idx = db.tracks.findIndex(t => t.id === req.params.id);
+  if (idx < 0) return res.status(404).json({ error: 'Трек не найден' });
+  if (req.user.role === 'admin' && db.tracks[idx].companyId !== req.user.companyId) return res.status(403).json({ error: 'Нет доступа' });
+  const trackId = db.tracks[idx].id;
+  db.tracks.splice(idx, 1);
+  db.trackEnrollments = db.trackEnrollments.filter(e => e.trackId !== trackId);
+  saveDB();
+  res.json({ ok: true });
+});
+
+app.post('/api/tracks/:id/enroll', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const track = db.tracks.find(t => t.id === req.params.id);
+  if (!track) return res.status(404).json({ error: 'Трек не найден' });
+  if (req.user.role === 'admin' && track.companyId !== req.user.companyId) return res.status(403).json({ error: 'Нет доступа' });
+  const { userIds } = req.body || {};
+  if (!Array.isArray(userIds) || !userIds.length) return res.status(400).json({ error: 'Выберите пользователей' });
+  let count = 0;
+  for (const uid of userIds) {
+    const u = db.users.find(x => x.id === uid && x.companyId === track.companyId && x.role === 'learner');
+    if (!u) continue;
+    if (db.trackEnrollments.find(e => e.trackId === track.id && e.userId === uid)) continue;
+    db.trackEnrollments.push({
+      id: 'te_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      trackId: track.id, userId: uid, companyId: track.companyId,
+      enrolledAt: new Date().toISOString(), status: 'active', source: 'manual'
+    });
+    count++;
+  }
+  saveDB();
+  res.json({ enrolled: count });
+});
+
+app.get('/api/tracks/:id/enrollments', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const track = db.tracks.find(t => t.id === req.params.id);
+  if (!track) return res.status(404).json({ error: 'Трек не найден' });
+  const list = db.trackEnrollments
+    .filter(e => e.trackId === track.id)
+    .map(e => {
+      const user = db.users.find(u => u.id === e.userId);
+      return { ...e, userName: user?.name || 'Удалён', userEmail: user?.email || '' };
+    });
+  res.json({ enrollments: list });
+});
+
+function processTrackAssignments(companyId) {
+  const now = new Date();
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  let created = 0;
+  for (const e of db.trackEnrollments) {
+    if (e.status !== 'active') continue;
+    const track = db.tracks.find(t => t.id === e.trackId);
+    if (!track) continue;
+    if (companyId && track.companyId !== companyId) continue;
+    const user = db.users.find(u => u.id === e.userId);
+    if (!user) continue;
+    const weeks = Math.floor((now - new Date(e.enrolledAt)) / WEEK_MS);
+    for (const step of track.steps) {
+      if (step.weekNumber > weeks) continue;
+      const exists = db.assignments.find(a =>
+        a.userId === e.userId && a.trackId === track.id && a.stepId === step.id
+      );
+      if (exists) continue;
+      const mat = db.materials.find(m => m.id === step.materialId);
+      if (!mat || mat.status !== 'published') continue;
+      db.assignments.push({
+        id: 'as_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + created,
+        companyId: track.companyId, materialId: step.materialId, userId: e.userId,
+        dueAt: null, isMandatory: true,
+        trackId: track.id, stepId: step.id,
+        assignedById: 'system', assignedByName: 'Track: ' + track.name,
+        createdAt: now.toISOString()
+      });
+      created++;
+    }
+  }
+  if (created > 0) saveDB();
+  return created;
+}
+
+app.post('/api/tracks/process', auth, (req, res) => {
+  if (req.user.role === 'learner') return res.status(403).json({ error: 'Нет доступа' });
+  const companyId = req.user.role === 'superadmin' ? (req.body.companyId || null) : req.user.companyId;
+  const created = processTrackAssignments(companyId);
+  res.json({ created });
+});
+
+/* ============ Материалы ============ */
 app.get('/api/materials', auth, (req, res) => {
   let list = db.materials;
   if (req.user.role === 'superadmin') {
@@ -714,7 +992,14 @@ app.post('/api/materials', auth, (req, res) => {
     if (!db.companies.find(c => c.id === companyId)) return res.status(400).json({ error: 'Компания не найдена' });
     targetCompany = companyId;
   }
-  const material = { id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), companyId: targetCompany, title: title.trim(), desc: (description || '').trim() || (ai ? 'Сгенерировано AI' : 'Без описания'), type: type || 'course', status: 'draft', author: req.user.name, updated: new Date().toISOString().slice(0, 10), learners: 0, content: [], lessons: type === 'course' ? [] : undefined, quiz: null, style: {} };
+  const material = {
+    id: 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    companyId: targetCompany, title: title.trim(),
+    desc: (description || '').trim() || (ai ? 'Сгенерировано AI' : 'Без описания'),
+    type: type || 'course', status: 'draft', author: req.user.name,
+    updated: new Date().toISOString().slice(0, 10), learners: 0,
+    content: [], lessons: type === 'course' ? [] : undefined, quiz: null, style: {}
+  };
   db.materials.unshift(material); saveDB();
   res.status(201).json({ material });
 });
@@ -743,7 +1028,10 @@ app.delete('/api/materials/:id', auth, (req, res) => {
   if (idx < 0) return res.status(404).json({ error: 'Материал не найден' });
   const m = db.materials[idx];
   if (!canAccessMaterial(req.user, m)) return res.status(403).json({ error: 'Нет доступа' });
-  if (m.type === 'scorm') { const scormPath = path.join(SCORM_DIR, m.id); try { if (fs.existsSync(scormPath)) fs.rmSync(scormPath, { recursive: true, force: true }); } catch {} }
+  if (m.type === 'scorm') {
+    const scormPath = path.join(SCORM_DIR, m.id);
+    try { if (fs.existsSync(scormPath)) fs.rmSync(scormPath, { recursive: true, force: true }); } catch {}
+  }
   db.materials.splice(idx, 1);
   for (const mat of db.materials) { if (mat.type === 'course' && Array.isArray(mat.lessons)) mat.lessons = mat.lessons.filter(l => l.materialId !== m.id); }
   db.attempts = db.attempts.filter(a => a.materialId !== m.id);
@@ -779,7 +1067,12 @@ app.post('/api/materials/:id/complete', auth, (req, res) => {
   }
   const existing = db.lessonCompletions.find(lc => lc.userId === req.user.id && lc.materialId === m.id && (courseId ? lc.courseId === courseId && lc.lessonId === lessonId : !lc.courseId));
   if (existing) return res.json({ completion: existing, alreadyDone: true });
-  const completion = { id: 'lc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), userId: req.user.id, companyId: req.user.companyId, materialId: m.id, type: 'longread', courseId: courseId || null, lessonId: lessonId || null, completedAt: new Date().toISOString() };
+  const completion = {
+    id: 'lc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    userId: req.user.id, companyId: req.user.companyId, materialId: m.id,
+    type: 'longread', courseId: courseId || null, lessonId: lessonId || null,
+    completedAt: new Date().toISOString()
+  };
   db.lessonCompletions.push(completion); saveDB();
   res.json({ completion, alreadyDone: false });
 });
@@ -855,7 +1148,13 @@ app.post('/api/materials/:id/submit', auth, (req, res) => {
   const score = total === 0 ? 0 : Math.round((correct / total) * 100);
   const passingScore = Number(m.quiz.passingScore ?? 70);
   const passed = total > 0 && score >= passingScore;
-  const attempt = { id: 'a_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), materialId: m.id, materialTitle: m.title, companyId: m.companyId, userId: req.user.id, userName: req.user.name, answers, correct, total, score, passed, createdAt: new Date().toISOString() };
+  const attempt = {
+    id: 'a_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    materialId: m.id, materialTitle: m.title, companyId: m.companyId,
+    userId: req.user.id, userName: req.user.name,
+    answers, correct, total, score, passed,
+    createdAt: new Date().toISOString()
+  };
   db.attempts.push(attempt);
   if (passed && courseId) {
     const course = db.materials.find(x => x.id === courseId);
@@ -871,7 +1170,7 @@ app.post('/api/materials/:id/submit', auth, (req, res) => {
   res.json({ attempt, details });
 });
 
-/* === Назначения === */
+/* ============ Назначения ============ */
 app.get('/api/assignments/my', auth, (req, res) => {
   const my = db.assignments.filter(a => a.userId === req.user.id);
   const result = my.map(a => {
@@ -929,7 +1228,12 @@ app.post('/api/assignments', auth, (req, res) => {
   for (const uid of validIds) {
     const exists = db.assignments.find(a => a.materialId === materialId && a.userId === uid);
     if (exists) continue;
-    const a = { id: 'as_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), companyId: m.companyId, materialId, userId: uid, assignedById: req.user.id, assignedByName: req.user.name, dueAt: dueAt || null, isMandatory: !!isMandatory, createdAt: new Date().toISOString() };
+    const a = {
+      id: 'as_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      companyId: m.companyId, materialId, userId: uid,
+      assignedById: req.user.id, assignedByName: req.user.name,
+      dueAt: dueAt || null, isMandatory: !!isMandatory, createdAt: new Date().toISOString()
+    };
     db.assignments.push(a);
     created.push(a);
   }
@@ -946,11 +1250,18 @@ app.delete('/api/assignments/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-/* === Аналитика === */
+/* ============ Аналитика ============ */
 app.get('/api/analytics/company', auth, (req, res) => {
   if (req.user.role !== 'admin' && req.user.role !== 'superadmin') return res.status(403).json({ error: 'Нет доступа' });
   const companyId = req.query.companyId || req.user.companyId;
-  if (!companyId) return res.status(400).json({ error: 'Не указана компания' });
+  if (!companyId) {
+    if (req.user.role === 'superadmin') {
+      const days = [];
+      for (let i = 13; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push({ date: d.toISOString().slice(0, 10), attempts: 0, completions: 0 }); }
+      return res.json({ stats: { employees: 0, active: 0, completedAny: 0, avgProgress: 0, totalCourses: 0, totalAttempts: 0, avgScore: 0, assignments: { total: 0, completed: 0, overdue: 0, dueSoon: 0, inProgress: 0, notStarted: 0 } }, courses: [], activityByDay: days, topEmployees: [], recentAttempts: [] });
+    }
+    return res.status(400).json({ error: 'Не указана компания' });
+  }
   if (req.user.role === 'admin' && companyId !== req.user.companyId) return res.status(403).json({ error: 'Нет доступа' });
   const employees = db.users.filter(u => u.companyId === companyId && u.role === 'learner');
   const courses = db.materials.filter(m => m.companyId === companyId && m.type === 'course');
@@ -1053,24 +1364,27 @@ app.get('/api/analytics/global', auth, (req, res) => {
     days.push({ date: dateStr, attempts: db.attempts.filter(a => a.createdAt.slice(0, 10) === dateStr).length, completions: db.lessonCompletions.filter(c => c.completedAt.slice(0, 10) === dateStr).length });
   }
   res.json({
-    stats: { companies: db.companies.length, users: db.users.filter(u => u.role !== 'superadmin').length, courses: db.materials.filter(m => m.type === 'course').length, attempts: db.attempts.length, avgProgress: companiesStats.length ? Math.round(companiesStats.reduce((s, c) => s + c.avgProgress, 0) / companiesStats.length) : 0, avgScore: db.attempts.length ? Math.round(db.attempts.reduce((s, a) => s + a.score, 0) / db.attempts.length) : 0 },
+    stats: {
+      companies: db.companies.length,
+      users: db.users.filter(u => u.role !== 'superadmin').length,
+      courses: db.materials.filter(m => m.type === 'course').length,
+      attempts: db.attempts.length,
+      avgProgress: companiesStats.length ? Math.round(companiesStats.reduce((s, c) => s + c.avgProgress, 0) / companiesStats.length) : 0,
+      avgScore: db.attempts.length ? Math.round(db.attempts.reduce((s, a) => s + a.score, 0) / db.attempts.length) : 0
+    },
     companiesStats, activityByDay: days
   });
 });
 
-/* === Dev-only: полное состояние (только вне production) === */
+/* ============ Dev endpoint ============ */
 if (process.env.NODE_ENV !== 'production') {
   app.get('/api/dev/state', (req, res) => {
     res.json({
       users: db.users.map(publicUser).filter(Boolean),
       companies: db.companies,
-      materials: db.materials.map(m => ({
-        id: m.id,
-        title: m.title,
-        type: m.type,
-        status: m.status,
-        companyId: m.companyId,
-      })),
+      materials: db.materials.map(m => ({ id: m.id, title: m.title, type: m.type, status: m.status, companyId: m.companyId })),
+      categories: db.categories,
+      tracks: db.tracks,
       knownAccounts: [
         { email: 'super@demo.ru', password: 'demo1234', role: 'superadmin', label: 'Супер-админ', hint: 'Управление всеми компаниями' },
         { email: 'admin@demo.ru', password: 'demo1234', role: 'admin', label: 'Администратор Demo', hint: 'Demo Company · материалы, сотрудники' },
@@ -1080,126 +1394,24 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-/* === Массовое создание пользователей (bulk import) === */
-app.post('/api/users/bulk', auth, async (req, res) => {
-  try {
-    if (req.user.role === 'learner') {
-      return res.status(403).json({ error: 'Нет доступа' });
-    }
-
-    const { users, companyId } = req.body || {};
-    if (!Array.isArray(users) || users.length === 0) {
-      return res.status(400).json({ error: 'Пустой список пользователей' });
-    }
-    if (users.length > 500) {
-      return res.status(400).json({ error: 'Максимум 500 пользователей за раз' });
-    }
-
-    // Определяем компанию
-    let finalCompanyId = req.user.companyId;
-    if (req.user.role === 'superadmin') {
-      if (!companyId) return res.status(400).json({ error: 'Укажите компанию' });
-      if (!db.companies.find(c => c.id === companyId)) {
-        return res.status(400).json({ error: 'Компания не найдена' });
-      }
-      finalCompanyId = companyId;
-    }
-    if (!finalCompanyId) {
-      return res.status(400).json({ error: 'Компания не определена' });
-    }
-
-    const created = [];
-    const skipped = [];
-    const seenEmails = new Set();
-
-    for (const u of users) {
-      const name = String(u.name || '').trim();
-      const email = String(u.email || '').trim().toLowerCase();
-      const password = String(u.password || '').trim();
-      const role = u.role === 'admin' ? 'admin' : 'learner';
-
-      // Валидация
-      if (!name) {
-        skipped.push({ name, email, reason: 'Нет имени' });
-        continue;
-      }
-      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        skipped.push({ name, email, reason: 'Некорректный email' });
-        continue;
-      }
-      if (password && password.length < 6) {
-        skipped.push({ name, email, reason: 'Пароль короче 6 символов' });
-        continue;
-      }
-      if (seenEmails.has(email)) {
-        skipped.push({ name, email, reason: 'Дубликат в файле' });
-        continue;
-      }
-      seenEmails.add(email);
-
-      // Проверка роли
-      if (role === 'admin' && req.user.role !== 'superadmin') {
-        skipped.push({ name, email, reason: 'Только супер-админ может создавать админов' });
-        continue;
-      }
-
-      // Email уже в базе?
-      if (db.users.some(existing => existing.email === email)) {
-        skipped.push({ name, email, reason: 'Email уже зарегистрирован' });
-        continue;
-      }
-
-      // Генерируем пароль если пустой
-      let finalPassword = password;
-      if (!finalPassword) {
-        const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
-        finalPassword = '';
-        for (let i = 0; i < 8; i++) {
-          finalPassword += chars[Math.floor(Math.random() * chars.length)];
-        }
-      }
-
-      try {
-        const passwordHash = await bcrypt.hash(finalPassword, 10);
-        const newUser = {
-          id: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + created.length,
-          name,
-          email,
-          passwordHash,
-          role,
-          companyId: finalCompanyId,
-          createdAt: new Date().toISOString(),
-        };
-        db.users.push(newUser);
-        created.push({
-          id: newUser.id,
-          name: newUser.name,
-          email: newUser.email,
-          role: newUser.role,
-          password: finalPassword,
-        });
-      } catch (e) {
-        skipped.push({ name, email, reason: 'Ошибка создания: ' + e.message });
-      }
-    }
-
-    if (created.length > 0) saveDB();
-
-    res.json({
-      created,
-      skipped,
-      total: users.length,
-    });
-  } catch (e) {
-    console.error('POST /api/users/bulk:', e);
-    res.status(500).json({ error: e.message });
-  }
-});
-
+/* ============ Error handler ============ */
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && 'body' in err) return res.status(400).json({ error: 'Некорректный JSON' });
   console.error(err); res.status(500).json({ error: 'Внутренняя ошибка' });
 });
+
+/* ============ Cron ============ */
+try {
+  const cron = require('node-cron');
+  cron.schedule('0 9 * * *', () => {
+    console.log('[cron] Processing track assignments...');
+    const n = processTrackAssignments();
+    console.log('[cron] Created', n, 'assignments');
+  });
+  console.log('[cron] Track assignments scheduled daily 9:00');
+} catch (e) {
+  console.log('[cron] node-cron not installed, skipping');
+}
 
 seed().then(() => {
   app.listen(PORT, () => {
